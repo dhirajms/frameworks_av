@@ -43,6 +43,9 @@
 #else
 #define UNUSED_UNLESS_VERBOSE(x)
 #endif
+#ifdef MTK_HARDWARE
+#include "MtkCameraParameters.h"
+#endif
 
 namespace android {
 
@@ -113,10 +116,21 @@ void CameraSourceListener::postRecordingFrameHandleTimestamp(nsecs_t timestamp,
 }
 
 static int32_t getColorFormat(const char* colorFormat) {
+#ifdef MTK_HARDWARE
+    if(colorFormat == NULL){
+        ALOGW("camera colorFrmat is NULL!");
+        return -1;
+    }
+    int32_t result = getColorFormatByMTK(colorFormat);
+    if(result != -1){
+        return result;
+    }
+#else
     if (!colorFormat) {
         ALOGE("Invalid color format");
         return -1;
     }
+#endif
 
     if (!strcmp(colorFormat, CameraParameters::PIXEL_FORMAT_YUV420P)) {
        return OMX_COLOR_FormatYUV420Planar;
@@ -1312,5 +1326,18 @@ void CameraSource::ProxyListener::recordingFrameHandleCallbackTimestamp(nsecs_t 
 void CameraSource::DeathNotifier::binderDied(const wp<IBinder>& who __unused) {
     ALOGI("Camera recording proxy died");
 }
+
+#ifdef MTK_HARDWARE
+int32_t getColorFormatByMTK(const char* colorFormat) {
+    ALOGD("getColorFormat(%s)", colorFormat);
+    if (!strcmp(colorFormat, MtkCameraParameters::PIXEL_FORMAT_YUV420I)) {
+       return OMX_COLOR_FormatYUV420Planar; // i420
+    }
+    if (!strcmp(colorFormat, CameraParameters::PIXEL_FORMAT_YUV420P) ) {
+       return OMX_MTK_COLOR_FormatYV12;// YV12
+    }
+    return -1;
+}
+#endif
 
 }  // namespace android

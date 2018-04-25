@@ -67,8 +67,27 @@
 #ifdef DOLBY_ENABLE
 #include "DolbyAudioPolicy_impl.h"
 #endif // DOLBY_END
+#include <audio_mtk.h>
+#include <AudioPolicyParameters.h>
 
 namespace android {
+    
+// mtk start
+#ifndef VOICE_VOLUME_MAX
+#define VOICE_VOLUME_MAX       (160)
+#endif
+#ifndef VOICE_ONEDB_STEP
+#define VOICE_ONEDB_STEP         (4)
+#endif
+// debug
+#if 0
+#define MTK_ALOGVV(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define MTK_ALOGV(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#else
+#define MTK_ALOGVV(...) do { } while(0)
+#define MTK_ALOGV(...) do { } while(0)
+#endif
+// mtk end
 
 //FIXME: workaround for truncated touch sounds
 // to be removed when the problem is handled by system UI
@@ -3412,6 +3431,17 @@ AudioPolicyManager::AudioPolicyManager(AudioPolicyClientInterface *clientInterfa
                 if (mPrimaryOutput == 0 &&
                         outProfile->getFlags() & AUDIO_OUTPUT_FLAG_PRIMARY) {
                     mPrimaryOutput = outputDesc;
+		#ifdef MTK_HARDWARE
+                    mAudioCustVolumeTable.bRev = CUSTOM_VOLUME_REV_1;
+                    mAudioCustVolumeTable.bReady = 0;
+                    mpClientInterface->getCustomAudioVolume(&mAudioCustVolumeTable);
+                    if (mAudioCustVolumeTable.bReady!=0) {
+                        ALOGD("mUseCustomVolume true");
+                        mAudioPolicyVendorControl.setCustomVolumeStatus(true);
+                    } else {
+                        ALOGD("mUseCustomVolume false");
+                    }
+		#endif
                 }
                 addOutput(output, outputDesc);
                 setOutputDevice(outputDesc,
@@ -5075,7 +5105,18 @@ float AudioPolicyManager::computeVolume(audio_stream_type_t stream,
                                         int index,
                                         audio_devices_t device)
 {
+#ifdef MTK_HARDWARE
+    float volumeDB;
+    if (mAudioPolicyVendorControl.getCustomVolumeStatus()) {
+            volumeDB = Volume::AmplToDb(computeCustomVolume(stream, index, device));
+    } else {
+        ALOGW("%s,not Customer Volume, Using Android Volume Curve",__FUNCTION__);
+            volumeDB = mVolumeCurves->volIndexToDb(stream, Volume::getDeviceCategory(device), index);
+    }
+    ALOGD("%s streamtype [%d],index [%d],device [0x%x], volumeDb [%f]",__FUNCTION__,stream,index,device,volumeDB);
+#else
     float volumeDB = mVolumeCurves->volIndexToDb(stream, Volume::getDeviceCategory(device), index);
+#endif
 
     // handle the case of accessibility active while a ringtone is playing: if the ringtone is much
     // louder than the accessibility prompt, the prompt cannot be heard, thus masking the touch
@@ -5183,7 +5224,16 @@ status_t AudioPolicyManager::checkAndSetVolume(audio_stream_type_t stream,
         float voiceVolume;
         // Force voice volume to max for bluetooth SCO as volume is managed by the headset
         if (stream == AUDIO_STREAM_VOICE_CALL) {
+#ifdef MTK_HARDWARE
+            if (mAudioPolicyVendorControl.getCustomVolumeStatus()) {
+                voiceVolume = computeCustomVolume(stream, index, device);
+            } else {
             voiceVolume = (float)index/(float)mVolumeCurves->getVolumeIndexMax(stream);
+            }
+#else
+            voiceVolume = (float)index/(float)mVolumeCurves->getVolumeIndexMax(stream);
+#endif
+
         } else {
             voiceVolume = 1.0;
         }
@@ -5641,6 +5691,299 @@ void AudioPolicyManager::updateAudioProfiles(audio_devices_t device,
         }
         profiles.addProfileFromHal(new AudioProfile(format, channelMasks, samplingRates));
     }
+}
+
+status_t AudioPolicyManager::SetPolicyManagerParameters(int par1,int par2 ,int par3,int par4)
+{
+    audio_devices_t primaryOutDevices = mPrimaryOutput->device();
+    audio_devices_t curDevice =Volume::getDeviceForVolume(mPrimaryOutput->device());
+    ALOGD("SetPolicyManagerParameters par1 = %d par2 = %d par3 = %d par4 = %d curDevice = 0x%x",par1,par2,par3,par4,curDevice);
+    status_t volStatus;
+    switch(par1) {
+        case POLICY_LOAD_VOLUME:{
+            LoadCustomVolume();
+            for(int i =0; i<AUDIO_STREAM_CNT;i++) {
+                if (i == AUDIO_STREAM_PATCH) {
+                    continue;
+                }
+                volStatus =checkAndSetVolume((audio_stream_type_t)i, mVolumeCurves->getVolumeIndex((audio_stream_type_t) i, primaryOutDevices), mPrimaryOutput,primaryOutDevices,50,true);
+            }
+            break;
+         }
+        default:
+            break;
+    }
+
+    return NO_ERROR;
+}
+
+float AudioPolicyManager::linearToLog(int volume)
+{
+    return volume ? exp(float(fCUSTOM_VOLUME_MAPPING_STEP - volume) * fBConvert) : 0;
+}
+
+int AudioPolicyManager::logToLinear(float volume)
+{
+    return volume ? fCUSTOM_VOLUME_MAPPING_STEP - int(fBConvertInverse * log(volume) + 0.5) : 0;
+}
+
+int AudioPolicyManager::mapVol(float &vol, float unitstep)
+{
+    int index = (vol+0.5)/unitstep;
+    vol -= (index*unitstep);
+    return index;
+}
+
+int AudioPolicyManager::mapping_Voice_vol(float &vol, float unitstep)
+{
+    #define ROUNDING_NUM (1)
+
+    if (vol < unitstep) {
+        return 1;
+    }
+    if (vol < (unitstep*2 + ROUNDING_NUM)) {
+        vol -= unitstep;
+        return 2;
+    } else if (vol < (unitstep*3 + ROUNDING_NUM)) {
+        vol -= unitstep*2;
+        return 3;
+    } else if (vol < (unitstep*4 + ROUNDING_NUM)) {
+        vol -= unitstep*3;
+        return 4;
+    } else if (vol < (unitstep*5 + ROUNDING_NUM)) {
+        vol -= unitstep*4;
+        return 5;
+    } else if (vol < (unitstep*6 + ROUNDING_NUM)) {
+        vol -= unitstep*5;
+        return 6;
+    } else if (vol < (unitstep*7 + ROUNDING_NUM)) {
+        vol -= unitstep*6;
+        return 7;
+    } else {
+        ALOGW("vole = %f unitstep = %f",vol,unitstep);
+        return 0;
+    }
+}
+
+
+int AudioPolicyManager::getStreamMaxLevels(int stream)
+{
+    return (int) mAudioCustVolumeTable.audiovolume_level[stream];
+}
+
+// this function will map vol 0~100 , base on customvolume map to 0~255 , and do linear calculation to set mastervolume
+float AudioPolicyManager::mapVoltoCustomVol(unsigned char array[], int volmin, int volmax,float &vol , int stream)
+{
+    MTK_ALOGV("+MapVoltoCustomVol vol = %f stream = %d volmin = %d volmax = %d",vol,stream,volmin,volmax);
+    CustomVolumeType vol_stream = (CustomVolumeType) stream;
+    audio_stream_type_t audio_stream = (audio_stream_type_t) stream;
+
+    if (vol_stream == CUSTOM_VOL_TYPE_VOICE_CALL || vol_stream == CUSTOM_VOL_TYPE_SIP) {
+        return mapVoiceVoltoCustomVol(array,volmin,volmax,vol,stream);
+    } else if (vol_stream >= CUSTOM_NUM_OF_VOL_TYPE || vol_stream < CUSTOM_VOL_TYPE_VOICE_CALL) {
+        ALOGE("%s %d Error : stream = %d",__FUNCTION__,__LINE__,stream);
+        audio_stream = AUDIO_STREAM_MUSIC;
+        vol_stream = CUSTOM_VOL_TYPE_MUSIC;
+    }
+
+    float volume =0.0;
+    if (vol == 0) {
+        volume = vol;
+        return 0;
+    } else {    // map volume value to custom volume
+        int dMaxLevels = getStreamMaxLevels(vol_stream);
+        int streamDescmIndexMax = mVolumeCurves->getVolumeIndexMax(audio_stream);// streamDesc.getVolumeIndexMax();
+        if (dMaxLevels <= 0) {
+            ALOGE("%s %d Error : dMaxLevels = %d",__FUNCTION__,__LINE__,dMaxLevels);
+            dMaxLevels = 1;
+        }
+        if (streamDescmIndexMax <= 0) {
+            ALOGE("%s %d Error : streamDescmIndexMax = %d",__FUNCTION__,__LINE__,streamDescmIndexMax);
+            streamDescmIndexMax = 1;
+        }
+
+        float unitstep = fCUSTOM_VOLUME_MAPPING_STEP/dMaxLevels;
+        if (vol < fCUSTOM_VOLUME_MAPPING_STEP/streamDescmIndexMax) {
+            volume = array[0];
+            vol = volume;
+            return volume;
+        }
+        int Index = mapVol(vol, unitstep);
+        float Remind = (1.0 - (float)vol/unitstep);
+        if (Index != 0) {
+            volume = ((array[Index]  - (array[Index] - array[Index-1]) * Remind)+0.5);
+        } else {
+            volume = 0;
+        }
+        MTK_ALOGVV("%s vol [%f] unitstep [%f] Index [%d] Remind [%f] volume [%f]",__FUNCTION__,vol,unitstep,Index,Remind,volume);
+    }
+    // -----clamp for volume
+    if ( volume > 253.0) {
+        volume = fCUSTOM_VOLUME_MAPPING_STEP;
+    } else if ( volume <= array[0]) {
+        volume = array[0];
+    }
+    vol = volume;
+    MTK_ALOGVV("%s volume [%f] vol [%f]",__FUNCTION__,volume,vol);
+    return volume;
+}
+
+// this function will map vol 0~100 , base on customvolume map to 0~255 , and do linear calculation to set mastervolume
+float AudioPolicyManager::mapVoiceVoltoCustomVol(unsigned char array[], int volmin __unused, int volmax __unused, float &vol, int vol_stream_type)
+{
+    vol = (int)vol;
+    float volume = 0.0;
+//  StreamDescriptor &streamDesc = mStreams.valueFor((audio_stream_type_t)AUDIO_STREAM_VOICE_CALL);//mStreams[AUDIO_STREAM_VOICE_CALL];
+    if (vol == 0) {
+        volume = array[0];
+    } else {
+        int dMaxIndex = getStreamMaxLevels(AUDIO_STREAM_VOICE_CALL)-1;
+        if (dMaxIndex < 0) {
+            ALOGE("%s %d Error : dMaxIndex = %d",__FUNCTION__,__LINE__,dMaxIndex);
+            dMaxIndex = 1;
+        }
+        if (vol >= fCUSTOM_VOLUME_MAPPING_STEP) {
+            volume = array[dMaxIndex];
+            MTK_ALOGVV("%s volumecheck stream = %d index = %d volume = %f",__FUNCTION__,AUDIO_STREAM_VOICE_CALL,dMaxIndex,volume);
+        } else {
+            double unitstep = fCUSTOM_VOLUME_MAPPING_STEP /dMaxIndex;
+            int Index = mapping_Voice_vol(vol, unitstep);
+            // boundary for array
+            if (Index >= dMaxIndex) {
+                Index = dMaxIndex;
+            }
+            float Remind = (1.0 - (float)vol/unitstep) ;
+            if (Index != 0) {
+                volume = (array[Index]  - (array[Index] - array[Index- 1]) * Remind)+0.5;
+            } else {
+                volume =0;
+            }
+            MTK_ALOGVV("%s volumecheck stream = %d index = %d volume = %f",__FUNCTION__,AUDIO_STREAM_VOICE_CALL,Index,volume);
+            MTK_ALOGVV("%s dMaxIndex [%d] vol [%f] unitstep [%f] Index [%d] Remind [%f] volume [%f]",__FUNCTION__,dMaxIndex,vol,unitstep,Index,Remind,volume);
+        }
+    }
+
+     if ( volume > CUSTOM_VOICE_VOLUME_MAX && vol_stream_type == CUSTOM_VOL_TYPE_VOICE_CALL) {
+         volume = CUSTOM_VOICE_VOLUME_MAX;
+     }
+     else if ( volume > 253.0) {
+        volume = fCUSTOM_VOLUME_MAPPING_STEP;
+     }
+     else if ( volume <= array[0]) {
+         volume = array[0];
+     }
+
+     vol = volume;
+     if ( vol_stream_type == CUSTOM_VOL_TYPE_VOICE_CALL) {
+     float degradeDb = (CUSTOM_VOICE_VOLUME_MAX-vol)/CUSTOM_VOICE_ONEDB_STEP;
+     MTK_ALOGVV("%s volume [%f] degradeDb [%f]",__FUNCTION__,volume,degradeDb);
+     vol = fCUSTOM_VOLUME_MAPPING_STEP - (degradeDb*4);
+     }
+     MTK_ALOGVV("%s volume [%f] vol [%f]",__FUNCTION__,volume,vol);
+     return volume;
+}
+
+float AudioPolicyManager::computeCustomVolume(int stream, int index, audio_devices_t device)
+{
+    // check if force use exist , get output device for certain mode
+    device_category deviceCategory = Volume::getDeviceCategory(device);
+    // compute custom volume
+    float volume =0.0;
+    int volmax=0 , volmin =0;
+    int custom_vol_device_mode,audiovolume_steamtype;
+    int dMaxStepIndex = 0;
+
+    MTK_ALOGVV("%s volumecheck stream = %d index = %d device = %d",__FUNCTION__,stream,index,device);
+
+    if (mAudioPolicyVendorControl.getVoiceReplaceDTMFStatus() && stream == AUDIO_STREAM_DTMF) {
+        //normalize new index from 0~15(audio) to 0~6(voice)
+        float DTMFvolInt = (fCUSTOM_VOLUME_MAPPING_STEP * (index - mVolumeCurves->getVolumeIndexMin(AUDIO_STREAM_DTMF))) / (mVolumeCurves->getVolumeIndexMax(AUDIO_STREAM_DTMF) - mVolumeCurves->getVolumeIndexMin(AUDIO_STREAM_DTMF));
+        index = (DTMFvolInt*(mVolumeCurves->getVolumeIndexMax(AUDIO_STREAM_VOICE_CALL) - mVolumeCurves->getVolumeIndexMin(AUDIO_STREAM_VOICE_CALL))/ (fCUSTOM_VOLUME_MAPPING_STEP)) + mVolumeCurves->getVolumeIndexMin(AUDIO_STREAM_VOICE_CALL);
+        MTK_ALOGVV("volumecheck refine DTMF index [%d] to Voice index [%d]",tempindex,index);
+        stream = (int) AUDIO_STREAM_VOICE_CALL;
+    }
+
+    float volInt = (fCUSTOM_VOLUME_MAPPING_STEP * (index - mVolumeCurves->getVolumeIndexMin((audio_stream_type_t)stream))) / (mVolumeCurves->getVolumeIndexMax((audio_stream_type_t)stream) - mVolumeCurves->getVolumeIndexMin((audio_stream_type_t)stream));
+
+    if (deviceCategory == DEVICE_CATEGORY_SPEAKER) {
+        custom_vol_device_mode = CUSTOM_VOLUME_SPEAKER_MODE;
+        if ((device & AUDIO_DEVICE_OUT_WIRED_HEADSET)||
+             (device & AUDIO_DEVICE_OUT_WIRED_HEADPHONE))
+                custom_vol_device_mode = CUSTOM_VOLUME_HEADSET_SPEAKER_MODE;
+    } else if (deviceCategory == DEVICE_CATEGORY_HEADSET) {
+        custom_vol_device_mode = CUSTOM_VOLUME_HEADSET_MODE;
+    } else if (deviceCategory == DEVICE_CATEGORY_EARPIECE) {
+        custom_vol_device_mode = CUSTOM_VOLUME_NORMAL_MODE;
+    } else {
+        custom_vol_device_mode = CUSTOM_VOLUME_HEADSET_SPEAKER_MODE;
+    }
+
+    if ((stream == (int) AUDIO_STREAM_VOICE_CALL) && (mEngine->getPhoneState() == AUDIO_MODE_IN_COMMUNICATION)) {
+        audiovolume_steamtype = (int) CUSTOM_VOL_TYPE_SIP;
+    } else if (stream >= (int) AUDIO_STREAM_VOICE_CALL && stream < (int) AUDIO_STREAM_CNT) {
+        audiovolume_steamtype = stream;
+    } else {
+        audiovolume_steamtype = (int) CUSTOM_VOL_TYPE_MUSIC;
+        ALOGE("%s %d Error : audiovolume_steamtype = %d",__FUNCTION__,__LINE__,audiovolume_steamtype);
+    }
+
+    dMaxStepIndex = getStreamMaxLevels(audiovolume_steamtype) - 1;
+
+    if (dMaxStepIndex > CUSTOM_AUDIO_MAX_VOLUME_STEP - 1) {
+        ALOGE("%s %d Error : dMaxStepIndex = %d",__FUNCTION__,__LINE__,dMaxStepIndex);
+        dMaxStepIndex = CUSTOM_AUDIO_MAX_VOLUME_STEP - 1;
+    } else if (dMaxStepIndex < 0) {
+        ALOGE("%s %d Error : dMaxStepIndex = %d",__FUNCTION__,__LINE__,dMaxStepIndex);
+        dMaxStepIndex = 0;
+    }
+
+    volmax =mAudioCustVolumeTable.audiovolume_steamtype[audiovolume_steamtype][custom_vol_device_mode][dMaxStepIndex];
+    volmin = mAudioCustVolumeTable.audiovolume_steamtype[audiovolume_steamtype][custom_vol_device_mode][0];
+    MTK_ALOGVV("%s audiovolume_steamtype %d custom_vol_device_mode %d stream %d", __FUNCTION__, audiovolume_steamtype, custom_vol_device_mode, audiovolume_steamtype);
+    MTK_ALOGVV("%s getStreamMaxLevels(stream) %d volmax %d volmin %d volInt %f index %d", __FUNCTION__, getStreamMaxLevels(audiovolume_steamtype), volmax, volmin, volInt, index);
+    volume = mapVoltoCustomVol(mAudioCustVolumeTable.audiovolume_steamtype[audiovolume_steamtype][custom_vol_device_mode], volmin, volmax,volInt, audiovolume_steamtype);
+
+    volume = linearToLog(volInt);
+    ALOGV("stream = %d after computeCustomVolume , volInt = %f volume = %f volmin = %d volmax = %d", audiovolume_steamtype, volInt, volume, volmin, volmax);
+    return volume;
+}
+
+void AudioPolicyManager::LoadCustomVolume()
+{
+    ALOGD("LoadCustomVolume Audio_Ver1_Custom_Volume");
+    //android::GetVolumeVer1ParamFromNV(&Audio_Ver1_Custom_Volume);
+
+    mAudioCustVolumeTable.bRev = CUSTOM_VOLUME_REV_1;
+    mAudioCustVolumeTable.bReady = 0;
+
+    MTK_ALOGVV("Before Update");
+    for (int i=0;i<CUSTOM_NUM_OF_VOL_TYPE;i++) {
+        MTK_ALOGVV("StreamType %d",i);
+        for (int j=0;j<CUSTOM_NUM_OF_VOL_MODE;j++) {
+            MTK_ALOGVV("DeviceType %d",j);
+            for (int k=0;k<CUSTOM_AUDIO_MAX_VOLUME_STEP;k++) {
+                MTK_ALOGVV("[IDX]:[Value] %d,%d",k,mAudioCustVolumeTable.audiovolume_steamtype[i][j][k]);
+            }
+        }
+    }
+    mpClientInterface->getCustomAudioVolume(&mAudioCustVolumeTable);
+    if (mAudioCustVolumeTable.bReady!=0) {
+        ALOGD("mUseCustomVolume true");
+        mAudioPolicyVendorControl.setCustomVolumeStatus(true);
+    } else {
+        ALOGD("mUseCustomVolume false");
+    }
+    MTK_ALOGVV("After Update");
+    for (int i=0;i<CUSTOM_NUM_OF_VOL_TYPE;i++) {
+        MTK_ALOGVV("StreamType %d",i);
+        for (int j=0;j<CUSTOM_NUM_OF_VOL_MODE;j++) {
+            MTK_ALOGVV("DeviceType %d",j);
+            for (int k=0;k<CUSTOM_AUDIO_MAX_VOLUME_STEP;k++) {
+                MTK_ALOGVV("[IDX]:[Value] %d,%d",k,mAudioCustVolumeTable.audiovolume_steamtype[i][j][k]);
+            }
+        }
+    }
+
 }
 
 }; // namespace android

@@ -73,6 +73,15 @@ LOCAL_MULTILIB := $(AUDIOSERVER_MULTILIB)
 
 LOCAL_CFLAGS += -Wall -Werror
 
+ifeq ($(BOARD_USES_MTK_HARDWARE),true)
+LOCAL_CFLAGS += -DMTK_HARDWARE
+
+LOCAL_SHARED_LIBRARIES += \
+    libmedia \
+    libaudiocustparam
+
+endif
+
 LOCAL_MODULE := libaudiopolicycomponents
 
 include $(BUILD_STATIC_LIBRARY)

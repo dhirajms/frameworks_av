@@ -76,6 +76,11 @@ enum {
     SET_AUDIO_PORT_CALLBACK_ENABLED,
     SET_MASTER_MONO,
     GET_MASTER_MONO,
+
+#ifdef MTK_HARDWARE
+    SET_POLICYMANAGER_PARAMETERS,
+#endif
+    LIST_AUDIO_SESSIONS,
 };
 
 #define MAX_ITEMS_PER_LIST 1024
@@ -508,6 +513,20 @@ public:
         *count = retCount;
         return status;
     }
+
+#ifdef MTK_HARDWARE
+    virtual status_t SetPolicyManagerParameters(int par1,int par2 ,int par3,int par4)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioPolicyService::getInterfaceDescriptor());
+        data.writeInt32(par1);
+        data.writeInt32(par2);
+        data.writeInt32(par3);
+        data.writeInt32(par4);
+        remote()->transact(SET_POLICYMANAGER_PARAMETERS, data, &reply);
+        return static_cast <status_t> (reply.readInt32());
+    }
+#endif
 
     virtual bool isOffloadSupported(const audio_offload_info_t& info)
     {
@@ -1140,7 +1159,18 @@ status_t BnAudioPolicyService::onTransact(
             delete[] descriptors;
             return status;
         }
-
+        
+#ifdef MTK_HARDWARE
+        case SET_POLICYMANAGER_PARAMETERS: {
+            CHECK_INTERFACE(IAudioPolicyService, data, reply);
+            int par1 =data.readInt32();
+            int par2 =data.readInt32();
+            int par3 =data.readInt32();
+            int par4 =data.readInt32();
+            reply->writeInt32(SetPolicyManagerParameters(par1,par2,par3,par4));
+            return NO_ERROR;
+        } break;
+#endif
         case IS_OFFLOAD_SUPPORTED: {
             CHECK_INTERFACE(IAudioPolicyService, data, reply);
             audio_offload_info_t info;

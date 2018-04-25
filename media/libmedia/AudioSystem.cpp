@@ -26,6 +26,9 @@
 
 #include <system/audio.h>
 
+#include <AudioPolicyParameters.h>
+#include <AudioMTKHardwareCommand.h>
+
 // ----------------------------------------------------------------------------
 
 namespace android {
@@ -1296,6 +1299,111 @@ void AudioSystem::AudioPolicyServiceClient::binderDied(const wp<IBinder>& who __
     }
 
     ALOGW("AudioPolicyService server died!");
+}
+
+//add , for EM mode
+status_t AudioSystem::GetEMParameter(void *ptr,size_t len)
+{
+#ifdef MTK_HARDWARE
+    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
+    if (af == 0) return PERMISSION_DENIED;
+    return af->GetEMParameter(ptr,len);
+#endif
+    return OK;
+}
+
+status_t AudioSystem::SetEMParameter(void *ptr,size_t len)
+{
+#ifdef MTK_HARDWARE
+    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
+    if (af == 0) return PERMISSION_DENIED;
+    return af->SetEMParameter(ptr,len);
+#endif
+}
+
+status_t AudioSystem::SetAudioCommand(int par1,int par2)
+{
+#ifdef MTK_HARDWARE
+    status_t af_status;
+    ALOGD("AudioSystem::SetAudioCommand");
+    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
+    if (af == 0)
+    {
+        ALOGE("AudioSystem::SetAudioCommand Error!! PERMISSION_DENIED");
+        return PERMISSION_DENIED;
+    }
+    af_status = af->SetAudioCommand(par1,par2);
+
+    if (par1 == SET_LOAD_VOLUME_SETTING)
+    {
+        const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+        if(aps != 0)
+        {
+            aps->SetPolicyManagerParameters (POLICY_LOAD_VOLUME,0,0,0);
+        }
+    }
+
+    return af_status;
+
+#endif
+    return OK;
+}
+
+status_t AudioSystem::GetAudioCommand(int par1,int* par2)
+{
+#ifdef MTK_HARDWARE
+    ALOGD("AudioSystem::GetAudioCommand");
+    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
+    if (af == 0)
+    {
+        ALOGE("AudioSystem::GetAudioCommand Error!! PERMISSION_DENIED");
+        return PERMISSION_DENIED;
+    }
+    *par2 =  af->GetAudioCommand(par1);
+#endif
+    return NO_ERROR;
+}
+
+status_t AudioSystem::SetAudioData(int par1,size_t byte_len,void *ptr)
+{
+#ifdef MTK_HARDWARE
+    status_t af_status;
+    ALOGD("SetAudioData");
+    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
+    if (af == 0)
+    {
+        ALOGE("AudioSystem::SetAAudioData Error!! PERMISSION_DENIED");
+        return PERMISSION_DENIED;
+    }
+    af_status = af->SetAudioData(par1,byte_len,ptr);
+
+    if (par1 == SET_AUDIO_VER1_DATA)
+    {
+        const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+        if(aps != 0)
+        {
+            aps->SetPolicyManagerParameters (POLICY_LOAD_VOLUME,0,0,0);
+        }
+    }
+
+    return af_status;
+#endif
+    return OK;
+}
+
+status_t AudioSystem::GetAudioData(int par1,size_t byte_len,void *ptr)
+{
+#ifdef MTK_HARDWARE
+    ALOGD("GetAudioData");
+    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
+    if (af == 0)
+    {
+        ALOGE("AudioSystem::GetAAudioData Error!! PERMISSION_DENIED");
+        return PERMISSION_DENIED;
+    }
+    return af->GetAudioData(par1,byte_len,ptr);
+#endif
+    return OK;
 }
 
 } // namespace android
