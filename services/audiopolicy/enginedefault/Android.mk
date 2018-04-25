@@ -49,5 +49,14 @@ LOCAL_SHARED_LIBRARIES += \
     libcutils \
     libutils \
     libaudioutils \
+    
+ifeq ($(BOARD_USES_MTK_HARDWARE),true)
+LOCAL_CFLAGS += -DMTK_HARDWARE
+
+LOCAL_SHARED_LIBRARIES += \
+    libmedia \
+    libaudiocustparam
+
+endif
 
 include $(BUILD_SHARED_LIBRARY)

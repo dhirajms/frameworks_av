@@ -60,6 +60,9 @@
 
 #include <system/audio.h>
 #include <hardware/audio.h>
+#ifdef MTK_HARDWARE
+#include <audio_mtk.h>
+#endif
 
 #include "AudioMixer.h"
 #include "AudioFlinger.h"
@@ -126,6 +129,173 @@ size_t AudioFlinger::mTeeSinkTrackFrames = kTeeSinkTrackFramesDefault;
 // In order to avoid invalidating offloaded tracks each time a Visualizer is turned on and off
 // we define a minimum time during which a global effect is considered enabled.
 static const nsecs_t kMinGlobalEffectEnabletimeNs = seconds(7200);
+
+// ----------------------------------------------------------------------------
+// support EM mode setting
+#ifdef MTK_HARDWARE
+status_t AudioFlinger::SetEMParameter(void *ptr, size_t len)
+{
+    ALOGV("SetEMParameter ");
+    AutoMutex lock(mHardwareLock);
+    if (NULL == mPrimaryHardwareDev)
+    {
+        ALOGE("%s mPrimaryHardwareDev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+
+    audio_hw_device_mtk_t *dev = (audio_hw_device_mtk_t*) mPrimaryHardwareDev->hwDevice();
+
+    if (NULL == dev)
+    {
+        ALOGE("%s dev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+
+    if (NULL == dev->SetEMParameter)
+    {
+        ALOGE("%s dev->%s is null",__FUNCTION__,__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+
+    mHardwareStatus = AUDIO_HW_SET_PARAMETER;
+    dev->SetEMParameter(dev,ptr,len);
+    mHardwareStatus = AUDIO_HW_IDLE;
+    return NO_ERROR;
+}
+
+status_t AudioFlinger::GetEMParameter(void *ptr, size_t len)
+{
+    ALOGV("GetEMParameter ");
+    // ioHandle == 0 means the parameters are global to the audio hardware interface
+    AutoMutex lock(mHardwareLock);
+    if (NULL == mPrimaryHardwareDev)
+    {
+        ALOGE("%s mPrimaryHardwareDev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    audio_hw_device_mtk_t *dev = static_cast<audio_hw_device_mtk_t*>(mPrimaryHardwareDev->hwDevice());
+    if (NULL == dev)
+    {
+        ALOGE("%s dev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    if (NULL == dev->GetEMParameter)
+    {
+        ALOGE("%s dev->%s is null",__FUNCTION__,__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    mHardwareStatus = AUDIO_HW_SET_PARAMETER;
+    dev->GetEMParameter(dev,ptr,len);
+    mHardwareStatus = AUDIO_HW_IDLE;
+    return NO_ERROR;
+}
+
+status_t AudioFlinger::SetAudioData(int par1,size_t len,void *ptr)
+{
+    ALOGV("SetAudioData par1 = %d,len = %zu ", par1, len);
+    AutoMutex lock(mHardwareLock);
+    if (NULL == mPrimaryHardwareDev)
+    {
+        ALOGE("%s mPrimaryHardwareDev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    audio_hw_device_mtk_t *dev = static_cast<audio_hw_device_mtk_t*>(mPrimaryHardwareDev->hwDevice());
+    if (NULL == dev)
+    {
+        ALOGE("%s dev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    if (NULL == dev->SetAudioData)
+    {
+        ALOGE("%s dev->%s is null",__FUNCTION__,__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    mHardwareStatus = AUDIO_HW_SET_PARAMETER;
+    dev->SetAudioData(dev,par1,len,ptr);
+    mHardwareStatus = AUDIO_HW_IDLE;
+    return NO_ERROR;
+}
+
+status_t AudioFlinger::GetAudioData(int par1,size_t len,void *ptr)
+{
+    ALOGV("GetAudioData par1 = %d,len = %zu ", par1, len);
+    AutoMutex lock(mHardwareLock);
+    if (NULL == mPrimaryHardwareDev)
+    {
+        ALOGE("%s mPrimaryHardwareDev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    audio_hw_device_mtk_t *dev = static_cast<audio_hw_device_mtk_t*>(mPrimaryHardwareDev->hwDevice());
+    if (NULL == dev)
+    {
+        ALOGE("%s dev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    if (NULL == dev->GetAudioData)
+    {
+        ALOGE("%s dev->%s is null",__FUNCTION__,__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    mHardwareStatus = AUDIO_HW_SET_PARAMETER;
+    dev->GetAudioData(dev,par1,len,ptr);
+    mHardwareStatus = AUDIO_HW_IDLE;
+    return NO_ERROR;
+}
+
+status_t AudioFlinger::SetAudioCommand(int parameters1,int parameters2)
+{
+    ALOGV("SetAudioCommand par1 = %d,par2 = %d ",parameters1,parameters2);
+    AutoMutex lock(mHardwareLock);
+    if (NULL == mPrimaryHardwareDev)
+    {
+        ALOGE("%s mPrimaryHardwareDev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    audio_hw_device_mtk_t *dev = static_cast<audio_hw_device_mtk_t*>(mPrimaryHardwareDev->hwDevice());
+    if (NULL == dev)
+    {
+        ALOGE("%s dev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    if (NULL == dev->SetAudioCommand)
+    {
+        ALOGE("%s dev->%s is null",__FUNCTION__,__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    mHardwareStatus = AUDIO_HW_SET_PARAMETER;
+    dev->SetAudioCommand(dev,parameters1,parameters2);
+    mHardwareStatus = AUDIO_HW_IDLE;
+    return NO_ERROR;
+}
+
+status_t AudioFlinger::GetAudioCommand(int parameters1)
+{
+    ALOGV("GetAudioCommand par1 = %d",parameters1);
+    int value =0;
+    AutoMutex lock(mHardwareLock);
+    if (NULL == mPrimaryHardwareDev)
+    {
+        ALOGE("%s mPrimaryHardwareDev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    audio_hw_device_mtk_t *dev = static_cast<audio_hw_device_mtk_t*>(mPrimaryHardwareDev->hwDevice());
+    if (NULL == dev)
+    {
+        ALOGE("%s dev is null",__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+    if (NULL == dev->GetAudioCommand)
+    {
+        ALOGE("%s dev->%s is null",__FUNCTION__,__FUNCTION__);
+        return INVALID_OPERATION;
+    }
+
+    mHardwareStatus = AUDIO_HW_SET_PARAMETER;
+    value =dev->GetAudioCommand(dev,parameters1);
+    mHardwareStatus = AUDIO_HW_IDLE;
+    return value;
+}
+#endif
 
 // ----------------------------------------------------------------------------
 

@@ -83,6 +83,14 @@ enum {
     GET_AUDIO_HW_SYNC,
     SYSTEM_READY,
     FRAME_COUNT_HAL,
+    #ifdef MTK_HARDWARE
+    GET_EM_PARAMETER  = 0x7FFF0000,  //Don't call by CTS for security
+    SET_EM_PARAMETER,
+    SET_AUDIO_COMMAND,
+    GET_AUDIO_COMMAND,
+    SET_AUDIO_DATA,
+    GET_AUDIO_DATA,
+#endif
 };
 
 #define MAX_ITEMS_PER_LIST 1024
@@ -929,6 +937,90 @@ public:
         }
         return reply.readInt64();
     }
+#ifdef MTK_HARDWARE
+    virtual status_t GetEMParameter(void *ptr, size_t len)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(len);
+        data.write(ptr,len);
+        remote()->transact(GET_EM_PARAMETER, data, &reply);
+        reply.read(ptr, len);
+        return OK;
+    }
+    virtual status_t SetEMParameter(void *ptr, size_t len)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(len);
+        data.write(ptr,len);
+        remote()->transact(SET_EM_PARAMETER, data, &reply);
+        reply.read(ptr, len);
+        return OK;
+    }
+    virtual status_t SetAudioCommand(int var1,int var2)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(var1);
+        data.writeInt32(var2);
+        remote()->transact(SET_AUDIO_COMMAND, data, &reply);
+        return  reply.readInt32();
+    }
+    virtual status_t GetAudioCommand(int var1)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(var1);
+        remote()->transact(GET_AUDIO_COMMAND, data, &reply);
+        return  reply.readInt32();
+    }
+    virtual status_t SetAudioData(int par1, size_t len, void *ptr)
+    {
+        Parcel data, reply;
+        if (ptr == NULL || len > 16384) {
+            return BAD_VALUE;
+        }
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(par1);
+        data.writeInt32(len);
+        if (len > 0) {
+            data.write(ptr, len);
+        }
+        status_t lStatus = remote()->transact(SET_AUDIO_DATA, data, &reply);
+        if (lStatus != NO_ERROR) {
+            ALOGE("SetAudioData error: %s", strerror(-lStatus));
+        } else {
+            if (len > 0) {
+                reply.read(ptr, len);
+            }
+        }
+        return reply.readInt32();
+    }
+
+    virtual status_t GetAudioData(int par1, size_t len, void *ptr)
+    {
+        Parcel data, reply;
+        if (ptr == NULL || len > 16384) {
+            return BAD_VALUE;
+        }
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(par1);
+        data.writeInt32(len);
+        if (len > 0) {
+            data.write(ptr, len);
+        }
+        status_t lStatus = remote()->transact(GET_AUDIO_DATA, data, &reply);
+        if (lStatus != NO_ERROR) {
+            ALOGE("GetAudioData error: %s", strerror(-lStatus));
+        } else {
+            if (len > 0) {
+                reply.read(ptr, len);
+            }
+        }
+        return reply.readInt32();
+    }
+#endif
 
 };
 
@@ -1449,6 +1541,127 @@ status_t BnAudioFlinger::onTransact(
             reply->writeInt64( frameCountHAL((audio_io_handle_t) data.readInt32()) );
             return NO_ERROR;
         } break;
+#ifdef MTK_HARDWARE
+        // for EM mode Setting
+        case GET_EM_PARAMETER:
+        {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            size_t size = data.readInt32();
+            void *params = malloc(size);
+            data.read(params, size);
+            status_t err = GetEMParameter(params,size);
+            if (err == NO_ERROR){
+                reply->write( params,size);
+            }
+            free(params);
+            return NO_ERROR;
+        }break;
+        case SET_EM_PARAMETER:
+        {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            size_t size = data.readInt32();
+            void *params = malloc(size);
+            data.read(params, size);
+            status_t err = SetEMParameter(params,size);
+            if (err == NO_ERROR){
+                reply->write(params,size);
+            }
+            free(params);
+            return NO_ERROR;
+        }break;
+        case SET_AUDIO_COMMAND:
+        {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            int32_t command1 = data.readInt32();
+            int32_t command2 = data.readInt32();
+            reply->writeInt32(SetAudioCommand(command1,command2));
+            return NO_ERROR;
+        }break;
+        case GET_AUDIO_COMMAND:
+        {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            int32_t command1 = data.readInt32();
+            reply->writeInt32(GetAudioCommand(command1));
+            return NO_ERROR;
+        }break;
+#if 0
+        case SET_AUDIO_DATA:
+        {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            size_t command = data.readInt32();
+            size_t buf_size = data.readInt32();
+            void *params = malloc(buf_size);
+            data.read(params, buf_size);
+            status_t err = SetAudioData(command,buf_size,params);
+            reply->write(params,buf_size);
+            free(params);
+            return NO_ERROR;
+        }break;
+        case GET_AUDIO_DATA:
+        {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            size_t command = data.readInt32();
+            size_t buf_size = data.readInt32();
+            void *params = malloc(buf_size);
+            data.read(params, buf_size);
+            status_t err = GetAudioData(command,buf_size,params);
+            reply->write(params,buf_size);
+            free(params);
+            return NO_ERROR;
+        }break;
+#else   //Sync Sprout modification
+        case SET_AUDIO_DATA: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            size_t command = data.readInt32();
+            size_t buf_size = data.readInt32();
+            if (buf_size > 16384) {
+                reply->writeInt32(BAD_VALUE);
+                return BAD_VALUE;
+            }
+            void *params = NULL;
+            if (buf_size > 0) {
+                params = malloc(buf_size);
+                if (params == NULL) {
+                    reply->writeInt32(BAD_VALUE);
+                    return BAD_VALUE;
+                }
+                data.read(params, buf_size);
+            }
+            status_t status = SetAudioData(command, buf_size, params);
+            if (params != NULL) {
+                reply->write(params, buf_size);
+                free(params);
+            }
+            reply->writeInt32(status);
+            return NO_ERROR;
+        } break;
+        case GET_AUDIO_DATA: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            size_t command = data.readInt32();
+            size_t buf_size = data.readInt32();
+            if (buf_size > 16384) {
+                reply->writeInt32(BAD_VALUE);
+                return BAD_VALUE;
+            }
+            void *params = NULL;
+            if (buf_size > 0) {
+                params = malloc(buf_size);
+                if (params == NULL) {
+                    reply->writeInt32(BAD_VALUE);
+                    return BAD_VALUE;
+                }
+                data.read(params, buf_size);
+            }
+            status_t status = GetAudioData(command, buf_size, params);
+            if (params != NULL) {
+                reply->write(params, buf_size);
+                free(params);
+            }
+            reply->writeInt32(status);
+            return NO_ERROR;
+        } break;
+#endif
+#endif
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

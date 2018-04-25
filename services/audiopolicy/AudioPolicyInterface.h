@@ -22,6 +22,7 @@
 #include <utils/String8.h>
 
 #include <hardware/audio_policy.h>
+#include <AudioCustomVolume.h>
 
 namespace android {
 
@@ -228,6 +229,7 @@ public:
                                       audio_io_handle_t *handle,
                                       uid_t uid) = 0;
     virtual status_t stopAudioSource(audio_io_handle_t handle) = 0;
+    virtual status_t SetPolicyManagerParameters(int par1, int par2 , int par3 , int par4) = 0;
 
     virtual status_t setMasterMono(bool mono) = 0;
     virtual status_t getMasterMono(bool *mono) = 0;
@@ -342,6 +344,8 @@ public:
                     const struct audio_config_base *deviceConfig,
                     audio_patch_handle_t patchHandle) = 0;
     virtual void onOutputSessionEffectsUpdate(sp<AudioSessionInfo>& streamInfo, bool added) = 0;
+    
+    virtual status_t getCustomAudioVolume(void* pCustomVol) = 0;
 
 };
 

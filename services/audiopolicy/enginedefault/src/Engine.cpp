@@ -85,9 +85,18 @@ status_t Engine::setPhoneState(audio_mode_t state)
         ALOGV("  Entering call in setPhoneState()");
         mApmObserver->getVolumeCurves().switchVolumeCurve(AUDIO_STREAM_VOICE_CALL,
                                                           AUDIO_STREAM_DTMF);
+#ifdef MTK_HARDWARE
+        AudioPolicyVendorControl &mAudioPolicyVendorControl = mApmObserver->getAudioPolicyVendorControl();
+        mAudioPolicyVendorControl.setVoiceReplaceDTMFStatus(true);
+#endif
+                                                          
     } else if (is_state_in_call(oldState) && !is_state_in_call(state)) {
         ALOGV("  Exiting call in setPhoneState()");
         mApmObserver->getVolumeCurves().restoreOriginVolumeCurve(AUDIO_STREAM_DTMF);
+#ifdef MTK_HARDWARE
+        AudioPolicyVendorControl &mAudioPolicyVendorControl = mApmObserver->getAudioPolicyVendorControl();
+        mAudioPolicyVendorControl.setVoiceReplaceDTMFStatus(false);
+#endif
     }
     return NO_ERROR;
 }

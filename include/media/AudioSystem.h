@@ -474,6 +474,14 @@ private:
     static audio_channel_mask_t gPrevInChannelMask;
 
     static sp<IAudioPolicyService> gAudioPolicyService;
+    // for AM mode set/get  parameters
+    public:
+    static status_t GetEMParameter(void *ptr,size_t len);
+    static status_t SetEMParameter(void *ptr,size_t len);
+    static status_t SetAudioCommand(int par1,int par2);
+    static status_t GetAudioCommand(int par1, int *par2);
+    static status_t SetAudioData(int par1,size_t len, void *ptr);
+    static status_t GetAudioData(int par1,size_t len,void *ptr);
 };
 
 };  // namespace android

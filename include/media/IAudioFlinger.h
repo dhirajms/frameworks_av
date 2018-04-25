@@ -245,6 +245,14 @@ public:
 
     // Returns the number of frames per audio HAL buffer.
     virtual size_t frameCountHAL(audio_io_handle_t ioHandle) const = 0;
+    
+    // get EM parameter
+    virtual status_t GetEMParameter(void *ptr, size_t len) = 0;
+    virtual status_t SetEMParameter(void *ptr, size_t len) = 0;
+    virtual status_t SetAudioCommand(int parameters1, int parameter2) = 0;
+    virtual status_t GetAudioCommand(int parameters1) = 0;
+    virtual status_t SetAudioData(int par1,size_t len,void *ptr)=0;
+    virtual status_t GetAudioData(int par1,size_t len,void *ptr)=0;
 };
 
 
