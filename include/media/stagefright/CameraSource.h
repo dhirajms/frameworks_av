@@ -317,6 +317,10 @@ private:
     CameraSource &operator=(const CameraSource &);
 };
 
+#ifdef MTK_HARDWARE
+int32_t getColorFormatByMTK(const char* colorFormat);
+#endif
+
 }  // namespace android
 
 #endif  // CAMERA_SOURCE_H_

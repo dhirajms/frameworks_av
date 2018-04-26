@@ -488,6 +488,18 @@ OMX_ERRORTYPE SoftVideoDecoderOMXComponent::internalSetParameter(
             uint32_t oldHeight = def->format.video.nFrameHeight;
             uint32_t newWidth = video_def->nFrameWidth;
             uint32_t newHeight = video_def->nFrameHeight;
+#ifdef MTK_HARDWARE
+            // 20150126 Marcus Huang: Fix ALPS01919422; limits the max width/height
+            //@Vdec_drv_if_public.c
+            //  DEC_MAX_WIDTH = 1920;
+            //  DEC_MAX_HEIGHT = 1088;
+#define MAX_SUPPORT_WIDTH 1920
+#define MAX_SUPPORT_HEIGHT 1088
+            if ((newWidth * newHeight) > (MAX_SUPPORT_WIDTH * MAX_SUPPORT_HEIGHT)) {
+                ALOGE("frame size is not supported (%d x %d)", newWidth, newHeight);
+                return OMX_ErrorUnsupportedSetting;
+            }
+#else
             // We need width, height, stride and slice-height to be non-zero and sensible.
             // These values were chosen to prevent integer overflows further down the line, and do
             // not indicate support for 32kx32k video.
@@ -496,6 +508,7 @@ OMX_ERRORTYPE SoftVideoDecoderOMXComponent::internalSetParameter(
                 ALOGE("b/22885421");
                 return OMX_ErrorBadParameter;
             }
+#endif
             if (newWidth != oldWidth || newHeight != oldHeight) {
                 bool outputPort = (newParams->nPortIndex == kOutputPortIndex);
                 if (outputPort) {

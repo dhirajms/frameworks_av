@@ -116,7 +116,16 @@ class AudioFlinger :
     friend class BinderService<AudioFlinger>;   // for AudioFlinger()
 public:
     static const char* getServiceName() ANDROID_API { return "media.audio_flinger"; }
-
+    
+// add to EM mode setting
+#ifdef MTK_HARDWARE
+    virtual status_t GetEMParameter(void *ptr, size_t len);
+    virtual status_t SetEMParameter(void *ptr, size_t len);
+    virtual status_t SetAudioData(int par1,size_t len,void *ptr);
+    virtual status_t GetAudioData(int par1,size_t len,void *ptr);
+    virtual status_t SetAudioCommand(int parameters1,int parameters2);
+    virtual status_t GetAudioCommand(int parameters1);
+#endif
     virtual     status_t    dump(int fd, const Vector<String16>& args);
 
     // IAudioFlinger interface, in binder opcode order

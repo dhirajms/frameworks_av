@@ -26,6 +26,7 @@
 #include <AudioOutputDescriptor.h>
 #include <AudioPolicyMix.h>
 #include <SoundTriggerSession.h>
+#include <AudioPolicyVendorControl.h>
 
 namespace android {
 
@@ -54,8 +55,8 @@ public:
     virtual IVolumeCurvesCollection &getVolumeCurves() = 0;
 
     virtual const sp<DeviceDescriptor> &getDefaultOutputDevice() const = 0;
-
-    virtual const bool &getA2dpSuspended() const = 0;
+    
+    virtual AudioPolicyVendorControl &getAudioPolicyVendorControl() = 0;
 
 protected:
     virtual ~AudioPolicyManagerObserver() {}

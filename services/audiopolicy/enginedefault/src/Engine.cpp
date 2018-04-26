@@ -85,9 +85,18 @@ status_t Engine::setPhoneState(audio_mode_t state)
         ALOGV("  Entering call in setPhoneState()");
         mApmObserver->getVolumeCurves().switchVolumeCurve(AUDIO_STREAM_VOICE_CALL,
                                                           AUDIO_STREAM_DTMF);
+#ifdef MTK_HARDWARE
+        AudioPolicyVendorControl &mAudioPolicyVendorControl = mApmObserver->getAudioPolicyVendorControl();
+        mAudioPolicyVendorControl.setVoiceReplaceDTMFStatus(true);
+#endif
+                                                          
     } else if (is_state_in_call(oldState) && !is_state_in_call(state)) {
         ALOGV("  Exiting call in setPhoneState()");
         mApmObserver->getVolumeCurves().restoreOriginVolumeCurve(AUDIO_STREAM_DTMF);
+#ifdef MTK_HARDWARE
+        AudioPolicyVendorControl &mAudioPolicyVendorControl = mApmObserver->getAudioPolicyVendorControl();
+        mAudioPolicyVendorControl.setVoiceReplaceDTMFStatus(false);
+#endif
     }
     return NO_ERROR;
 }
@@ -352,7 +361,6 @@ audio_devices_t Engine::getDeviceForStrategyInt(routing_strategy strategy,
             // when not in a phone call, phone strategy should route STREAM_VOICE_CALL to A2DP
             if (!isInCall() &&
                     (mForceUse[AUDIO_POLICY_FORCE_FOR_MEDIA] != AUDIO_POLICY_FORCE_NO_BT_A2DP) &&
-                    (!mApmObserver->getA2dpSuspended()) &&
                     (outputs.isA2dpOnPrimary() || (outputs.getA2dpOutput() != 0))) {
                 device = availableOutputDevicesType & AUDIO_DEVICE_OUT_BLUETOOTH_A2DP;
                 if (device) break;
@@ -385,7 +393,6 @@ audio_devices_t Engine::getDeviceForStrategyInt(routing_strategy strategy,
             // A2DP speaker when forcing to speaker output
             if (!isInCall() &&
                     (mForceUse[AUDIO_POLICY_FORCE_FOR_MEDIA] != AUDIO_POLICY_FORCE_NO_BT_A2DP) &&
-                    (!mApmObserver->getA2dpSuspended()) &&
                     (outputs.isA2dpOnPrimary() || (outputs.getA2dpOutput() != 0))) {
                 device = availableOutputDevicesType & AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER;
                 if (device) break;
@@ -484,7 +491,6 @@ audio_devices_t Engine::getDeviceForStrategyInt(routing_strategy strategy,
         }
         if ((device2 == AUDIO_DEVICE_NONE) &&
                 (mForceUse[AUDIO_POLICY_FORCE_FOR_MEDIA] != AUDIO_POLICY_FORCE_NO_BT_A2DP) &&
-                (!mApmObserver->getA2dpSuspended()) &&
                 (outputs.isA2dpOnPrimary() || (outputs.getA2dpOutput() != 0))) {
             device2 = availableOutputDevicesType & AUDIO_DEVICE_OUT_BLUETOOTH_A2DP;
             if (device2 == AUDIO_DEVICE_NONE) {
@@ -707,5 +713,4 @@ AudioPolicyManagerInterface *Engine::queryInterface()
 
 } // namespace audio_policy
 } // namespace android
-
 

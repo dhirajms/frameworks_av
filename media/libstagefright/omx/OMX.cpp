@@ -724,6 +724,24 @@ OMX_ERRORTYPE OMX::OnFillBufferDone(
     msg.u.extended_buffer_data.range_length = pBuffer->nFilledLen;
     msg.u.extended_buffer_data.flags = pBuffer->nFlags;
     msg.u.extended_buffer_data.timestamp = pBuffer->nTimeStamp;
+#ifdef MTK_HARDWARE
+    //for transmitting proprietary data
+    msg.u.extended_buffer_data.token_tick = pBuffer->nTickCount;
+    msg.u.extended_buffer_data.token_VA = 0;
+    msg.u.extended_buffer_data.token_PA = 0;
+    msg.u.extended_buffer_data.token_FD = 0;
+    if( 0x00010000 == (0x00010000 & pBuffer->nFlags) )
+    {
+        //OMX_U32 CMInfo[0x8] = {0};
+        OMX_U32 *CMPtr = (OMX_U32 *)pBuffer->pPlatformPrivate;
+        if( NULL != pBuffer->pPlatformPrivate )
+        {
+           msg.u.extended_buffer_data.token_VA = *(CMPtr+2);
+            msg.u.extended_buffer_data.token_PA = *(CMPtr+3);
+            msg.u.extended_buffer_data.token_FD = *(CMPtr+7);
+        }
+    }
+#endif
 
     sp<OMX::CallbackDispatcher> callbackDispatcher = findDispatcher(node);
     if (callbackDispatcher != NULL) {
